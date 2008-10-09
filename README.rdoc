@@ -1,0 +1,36 @@
+= FuzzyFileFinder
+
+FuzzyFileFinder is a (somewhat improved) implementation of TextMate's "cmd-T" functionality. It allows you to search for a file by specifying a pattern of characters that appear in that file's name. Unlike TextMate, FuzzyFileFinder also lets you match against the file's directory, so you can more easily scope your search.
+
+== FEATURES:
+
+* Quickly search directory trees for files
+* Avoids accidentally scanning huge directories by implementing a ceiling (default 10,000 entries)
+* Simple highlighting of matches to discover how a pattern matched
+
+== SYNOPSIS:
+
+In a nutshell:
+
+  require 'fuzzy_file_finder'
+
+  finder = FuzzyFileFinder.new
+
+  finder.search "app/blogcon" do |match|
+    puts "[%5d] %s" % [match[:score] * 10000, match[:highlighted_path]]
+  end
+
+  matches = finder.find("app/blogcon").sort_by { |m| [-m[:score], m[:path] }
+  matches.each do |match|
+    puts "[%5d] %s" % [match[:score] * 10000, match[:highlighted_path]]
+  end
+
+See FuzzyFileFinder for more documentation, and links to further information.
+
+== INSTALL:
+
+* gem install --source=http://gems.github.com jamis-fuzzy_file_finder
+
+== LICENSE:
+
+All code, documentation, and related materials in this project are released into the PUBLIC DOMAIN. Usage, modification, and distribution are allowed without restriction.
