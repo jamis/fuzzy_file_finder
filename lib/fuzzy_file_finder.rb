@@ -192,7 +192,7 @@ class FuzzyFileFinder
 
   # Displays the finder object in a sane, non-explosive manner.
   def inspect #:nodoc:
-    "#<%s:0x%x roots=%s, files=%d, directories=%d>" % [self.class.name, object_id, roots.each { |r| r.name.inspect }.join(", "), file_count, directory_count]
+    "#<%s:0x%x roots=%s, files=%d, directories=%d>" % [self.class.name, object_id, roots.map { |r| r.name.inspect }.join(", "), file_count, directory_count]
   end
 
   private
