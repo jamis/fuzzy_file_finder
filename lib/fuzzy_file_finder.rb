@@ -37,7 +37,7 @@ class FuzzyFileFinder
   module Version
     MAJOR = 1
     MINOR = 0
-    TINY  = 0
+    TINY  = 1
     STRING = [MAJOR, MINOR, TINY].join(".")
   end
 
@@ -88,24 +88,31 @@ class FuzzyFileFinder
     end
   end
 
-  # The root of the directory tree to search.
-  attr_reader :root
+  # The roots directory trees to search.
+  attr_reader :roots
 
   # The maximum number of files and directories (combined).
   attr_reader :ceiling
 
-  # The number of directories beneath +root+
+  # The number of directories beneath all +roots+
   attr_reader :directory_count
 
-  # The number of files beneath +root+
+  # The number of files beneath all +roots+
   attr_reader :file_count
 
   # Initializes a new FuzzyFileFinder. This will scan the
   # given +directory+, using +ceiling+ as the maximum number
   # of entries to scan. If there are more than +ceiling+ entries
   # a TooManyEntries exception will be raised.
-  def initialize(directory=".", ceiling=10_000)
-    @root = Directory.new(directory)
+  def initialize(directories=['.'], ceiling=10_000)
+    directories = directories.any? ? directories : ['.']
+
+    # expand any paths with ~
+    root_dirnames = directories.map{|d| File.expand_path(d)}.select do |d|
+        File.exists? d and File.directory? d
+    end
+
+    @roots = root_dirnames.map {|d| Directory.new(d) }
     @ceiling = ceiling
     rescan!
   end
@@ -114,10 +121,10 @@ class FuzzyFileFinder
   # you'll need to call this to force the finder to be aware of
   # the changes.
   def rescan!
-    root.children.clear
+    roots.each { |r| r.children.clear }
     @file_count = 0
     @directory_count = 0
-    follow_tree(root.name, root)
+    roots.each { |r| follow_tree(r.name, r) }
   end
 
   # Takes the given +pattern+ (which must be a string) and searches
@@ -168,7 +175,9 @@ class FuzzyFileFinder
     file_regex_raw = "^(.*?)" << make_pattern(file_name_part) << "(.*)$"
     file_regex = Regexp.new(file_regex_raw, Regexp::IGNORECASE)
 
-    do_search(path_regex, path_parts.length, file_regex, root, &block)
+    roots.each do |root|
+        do_search(path_regex, path_parts.length, file_regex, root, &block)
+    end
   end
 
   # Takes the given +pattern+ (which must be a string, formatted as
@@ -185,7 +194,7 @@ class FuzzyFileFinder
 
   # Displays the finder object in a sane, non-explosive manner.
   def inspect #:nodoc:
-    "#<%s:0x%x root=%s, files=%d, directories=%d>" % [self.class.name, object_id, root.name.inspect, file_count, directory_count]
+    "#<%s:0x%x roots=%s, files=%d, directories=%d>" % [self.class.name, object_id, (roots.each {|r| r.name.inspect}).join(", "), file_count, directory_count]
   end
 
   private
@@ -288,7 +297,7 @@ class FuzzyFileFinder
       # For each child of the directory, search under subdirectories, or
       # match files.
       under.children.each do |entry|
-        full = under == root ? entry.name : File.join(under.name, entry.name)
+        full = roots.any? { |r| r == under } ? entry.name : File.join(under.name, entry.name)
         if entry.directory?
           do_search(path_regex, path_segments, file_regex, entry, &block)
         elsif (path_regex.nil? || path_match) && file_match = entry.name.match(file_regex)
