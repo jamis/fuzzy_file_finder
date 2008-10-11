@@ -75,7 +75,7 @@ class FuzzyFileFinder
 
   # Used internally to represent a subdirectory within the directory
   # tree.
-  class Directory < FileSystemEntry
+  class Directory < FileSystemEntry #:nodoc:
     attr_reader :children
 
     def initialize(name)
@@ -174,7 +174,7 @@ class FuzzyFileFinder
     file_regex = Regexp.new(file_regex_raw, Regexp::IGNORECASE)
 
     roots.each do |root|
-        do_search(path_regex, path_parts.length, file_regex, root, &block)
+      do_search(path_regex, path_parts.length, file_regex, root, &block)
     end
   end
 
