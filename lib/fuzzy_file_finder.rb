@@ -62,43 +62,42 @@ class FuzzyFileFinder
 
   # Used internally to represent a file within the directory tree.
   class FileSystemEntry #:nodoc:
+    attr_reader :parent
     attr_reader :name
 
-    def initialize(name)
+    def initialize(parent, name)
+      @parent = parent
       @name = name
     end
 
-    def directory?
-      false
+    def path
+      File.join(parent.name, name)
     end
   end
 
   # Used internally to represent a subdirectory within the directory
   # tree.
-  class Directory < FileSystemEntry #:nodoc:
-    attr_reader :children
+  class Directory #:nodoc:
+    attr_reader :name
 
-    def initialize(name)
-      @children = []
-      super
+    def initialize(name, is_root=false)
+      @name = name
+      @is_root = is_root
     end
 
-    def directory?
-      true
+    def root?
+      is_root
     end
   end
 
   # The roots directory trees to search.
   attr_reader :roots
 
-  # The maximum number of files and directories (combined).
+  # The list of files beneath all +roots+
+  attr_reader :files
+
+  # The maximum number of files beneath all +roots+
   attr_reader :ceiling
-
-  # The number of directories beneath all +roots+
-  attr_reader :directory_count
-
-  # The number of files beneath all +roots+
-  attr_reader :file_count
 
   # Initializes a new FuzzyFileFinder. This will scan the
   # given +directories+, using +ceiling+ as the maximum number
@@ -111,8 +110,10 @@ class FuzzyFileFinder
     # expand any paths with ~
     root_dirnames = directories.map { |d| File.expand_path(d) }.select { |d| File.directory?(d) }
 
-    @roots = root_dirnames.map { |d| Directory.new(d) }
+    @roots = root_dirnames.map { |d| Directory.new(d, true) }
+    @files = []
     @ceiling = ceiling
+
     rescan!
   end
 
@@ -120,10 +121,8 @@ class FuzzyFileFinder
   # you'll need to call this to force the finder to be aware of
   # the changes.
   def rescan!
-    roots.each { |r| r.children.clear }
-    @file_count = 0
-    @directory_count = 0
-    roots.each { |r| follow_tree(r.name, r) }
+    @files.clear
+    roots.each { |root| follow_tree(root) }
   end
 
   # Takes the given +pattern+ (which must be a string) and searches
@@ -174,8 +173,16 @@ class FuzzyFileFinder
     file_regex_raw = "^(.*?)" << make_pattern(file_name_part) << "(.*)$"
     file_regex = Regexp.new(file_regex_raw, Regexp::IGNORECASE)
 
-    roots.each do |root|
-      do_search(path_regex, path_parts.length, file_regex, root, &block)
+    path_matches = {}
+    files.each do |file|
+      if path_regex
+        path_match = match_path(file.parent, path_matches, path_regex, path_parts.length)
+        next if path_match[:missed]
+      else
+        path_match = { :score => 1, :result => file.parent.name, :missed => true }
+      end
+
+      match_file(file, file_regex, path_match, &block)
     end
   end
 
@@ -193,27 +200,24 @@ class FuzzyFileFinder
 
   # Displays the finder object in a sane, non-explosive manner.
   def inspect #:nodoc:
-    "#<%s:0x%x roots=%s, files=%d, directories=%d>" % [self.class.name, object_id, roots.map { |r| r.name.inspect }.join(", "), file_count, directory_count]
+    "#<%s:0x%x roots=%s, files=%d>" % [self.class.name, object_id, roots.map { |r| r.name.inspect }.join(", "), files.length]
   end
 
   private
 
-    # Processes the given +path+ into the given +directory+ object,
-    # recursively following subdirectories in a depth-first manner.
-    def follow_tree(path, directory)
-      Dir.entries(path).each do |entry|
+    # Recursively scans +directory+ and all files and subdirectories
+    # beneath it, depth-first.
+    def follow_tree(directory)
+      Dir.entries(directory.name).each do |entry|
         next if entry[0,1] == "."
-        raise TooManyEntries if file_count + directory_count > ceiling
+        raise TooManyEntries if files.length > ceiling
 
-        full = path == "." ? entry : File.join(path, entry)
+        full = File.join(directory.name, entry)
+
         if File.directory?(full)
-          @directory_count += 1
-          subdir = Directory.new(full)
-          directory.children << subdir
-          follow_tree(full, subdir)
+          follow_tree(Directory.new(full))
         else
-          @file_count += 1
-          directory.children << FileSystemEntry.new(entry)
+          files.push(FileSystemEntry.new(directory, entry))
         end
       end
     end
@@ -272,52 +276,36 @@ class FuzzyFileFinder
       return { :score => score, :result => runs.join }
     end
 
-    # Do the actual search, recursively. +path_regex+ is either nil,
-    # or a regular expression to match against directory names. The
-    # +path_segments+ parameter is an integer indicating how many
-    # directory segments there were in the original pattern. The
-    # +file_regex+ is a regular expression to match against the file
-    # name, +under+ is a Directory object to search. Matches are
-    # yielded.
-    def do_search(path_regex, path_segments, file_regex, under, &block)
-      # If a path_regex is present, match the current directory against
-      # it and, if there is a match, compute the score and highlighted
-      # result.
-      path_match = path_regex && under.name.match(path_regex)
+    # Match the given path against the regex, caching the result in +path_matches+.
+    # If +path+ is already cached in the path_matches cache, just return the cached
+    # value.
+    def match_path(path, path_matches, path_regex, path_segments)
+      return path_matches[path] if path_matches.key?(path)
 
-      if path_match
-        path_match_result = build_match_result(path_match, path_segments)
-        path_match_score = path_match_result[:score]
-        path_match_result = path_match_result[:result]
-      else
-        path_match_score = 1
-      end
+      match = path.name.match(path_regex)
 
-      # determine whether +under+ is one of our root objects or not
-      is_root = roots.any? { |root| root == under }
+      path_matches[path] =
+        match && build_match_result(match, path_segments) ||
+        { :score => 1, :result => path.name, :missed => true }
+    end
 
-      # For each child of the directory, search under subdirectories, or
-      # match files.
-      under.children.each do |entry|
-        full = is_root ? entry.name : File.join(under.name, entry.name)
-        if entry.directory?
-          do_search(path_regex, path_segments, file_regex, entry, &block)
-        elsif (path_regex.nil? || path_match) && file_match = entry.name.match(file_regex)
-          match_result = build_match_result(file_match, 1)
-          highlighted_directory = path_match_result || under.name
-          full_match_result = File.join(highlighted_directory, match_result[:result])
-          abbr = File.join(highlighted_directory.gsub(/[^\/]+/) { |m| m.index("(") ? m : m[0,1] }, match_result[:result])
+    # Match +file+ against +file_regex+. If it matches, yield the match
+    # metadata to the block.
+    def match_file(file, file_regex, path_match, &block)
+      if file_match = file.name.match(file_regex)
+        match_result = build_match_result(file_match, 1)
+        full_match_result = File.join(path_match[:result], match_result[:result])
+        abbr = File.join(path_match[:result].gsub(/[^\/]+/) { |m| m.index("(") ? m : m[0,1] }, match_result[:result])
 
-          result = { :path => full,
-                     :abbr => abbr,
-                     :directory => under.name,
-                     :name => entry.name,
-                     :highlighted_directory => highlighted_directory,
-                     :highlighted_name => match_result[:result],
-                     :highlighted_path => full_match_result,
-                     :score => path_match_score * match_result[:score] }
-          yield result
-        end
+        result = { :path => file.path,
+                   :abbr => abbr,
+                   :directory => file.parent.name,
+                   :name => file.name,
+                   :highlighted_directory => path_match[:result],
+                   :highlighted_name => match_result[:result],
+                   :highlighted_path => full_match_result,
+                   :score => path_match[:score] * match_result[:score] }
+        yield result
       end
     end
 end
