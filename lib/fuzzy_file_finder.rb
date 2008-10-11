@@ -101,11 +101,12 @@ class FuzzyFileFinder
   attr_reader :file_count
 
   # Initializes a new FuzzyFileFinder. This will scan the
-  # given +directory+, using +ceiling+ as the maximum number
+  # given +directories+, using +ceiling+ as the maximum number
   # of entries to scan. If there are more than +ceiling+ entries
   # a TooManyEntries exception will be raised.
   def initialize(directories=['.'], ceiling=10_000)
-    directories = directories.any? ? directories : ['.']
+    directories = Array(directories)
+    directories << "." if directories.empty?
 
     # expand any paths with ~
     root_dirnames = directories.map { |d| File.expand_path(d) }.select { |d| File.directory?(d) }
