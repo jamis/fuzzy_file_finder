@@ -292,10 +292,13 @@ class FuzzyFileFinder
         path_match_score = 1
       end
 
+      # determine whether +under+ is one of our root objects or not
+      is_root = roots.any? { |root| root == under }
+
       # For each child of the directory, search under subdirectories, or
       # match files.
       under.children.each do |entry|
-        full = roots.any? { |r| r == under } ? entry.name : File.join(under.name, entry.name)
+        full = is_root ? entry.name : File.join(under.name, entry.name)
         if entry.directory?
           do_search(path_regex, path_segments, file_regex, entry, &block)
         elsif (path_regex.nil? || path_match) && file_match = entry.name.match(file_regex)
