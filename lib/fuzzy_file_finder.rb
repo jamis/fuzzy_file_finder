@@ -108,11 +108,9 @@ class FuzzyFileFinder
     directories = directories.any? ? directories : ['.']
 
     # expand any paths with ~
-    root_dirnames = directories.map{|d| File.expand_path(d)}.select do |d|
-        File.exists? d and File.directory? d
-    end
+    root_dirnames = directories.map { |d| File.expand_path(d) }.select { |d| File.directory?(d) }
 
-    @roots = root_dirnames.map {|d| Directory.new(d) }
+    @roots = root_dirnames.map { |d| Directory.new(d) }
     @ceiling = ceiling
     rescan!
   end
@@ -194,7 +192,7 @@ class FuzzyFileFinder
 
   # Displays the finder object in a sane, non-explosive manner.
   def inspect #:nodoc:
-    "#<%s:0x%x roots=%s, files=%d, directories=%d>" % [self.class.name, object_id, (roots.each {|r| r.name.inspect}).join(", "), file_count, directory_count]
+    "#<%s:0x%x roots=%s, files=%d, directories=%d>" % [self.class.name, object_id, roots.each { |r| r.name.inspect }.join(", "), file_count, directory_count]
   end
 
   private
