@@ -99,6 +99,9 @@ class FuzzyFileFinder
   # The maximum number of files beneath all +roots+
   attr_reader :ceiling
 
+  # The prefix shared by all +roots+.
+  attr_reader :shared_prefix
+
   # Initializes a new FuzzyFileFinder. This will scan the
   # given +directories+, using +ceiling+ as the maximum number
   # of entries to scan. If there are more than +ceiling+ entries
@@ -108,9 +111,12 @@ class FuzzyFileFinder
     directories << "." if directories.empty?
 
     # expand any paths with ~
-    root_dirnames = directories.map { |d| File.expand_path(d) }.select { |d| File.directory?(d) }
+    root_dirnames = directories.map { |d| File.expand_path(d) }.select { |d| File.directory?(d) }.uniq
 
     @roots = root_dirnames.map { |d| Directory.new(d, true) }
+    @shared_prefix = determine_shared_prefix
+    @shared_prefix_re = Regexp.new("^#{Regexp.escape(shared_prefix)}" + (shared_prefix.empty? ? "" : "/"))
+
     @files = []
     @ceiling = ceiling
 
@@ -175,12 +181,8 @@ class FuzzyFileFinder
 
     path_matches = {}
     files.each do |file|
-      if path_regex
-        path_match = match_path(file.parent, path_matches, path_regex, path_parts.length)
-        next if path_match[:missed]
-      else
-        path_match = { :score => 1, :result => file.parent.name, :missed => true }
-      end
+      path_match = match_path(file.parent, path_matches, path_regex, path_parts.length)
+      next if path_match[:missed]
 
       match_file(file, file_regex, path_match, &block)
     end
@@ -282,11 +284,17 @@ class FuzzyFileFinder
     def match_path(path, path_matches, path_regex, path_segments)
       return path_matches[path] if path_matches.key?(path)
 
-      match = path.name.match(path_regex)
+      matchable_name = path.name.sub(@shared_prefix_re, "")
 
-      path_matches[path] =
-        match && build_match_result(match, path_segments) ||
-        { :score => 1, :result => path.name, :missed => true }
+      if path_regex
+        match = matchable_name.match(path_regex)
+
+        path_matches[path] =
+          match && build_match_result(match, path_segments) ||
+          { :score => 1, :result => matchable_name, :missed => true }
+      else
+        path_matches[path] = { :score => 1, :result => matchable_name }
+      end
     end
 
     # Match +file+ against +file_regex+. If it matches, yield the match
@@ -307,5 +315,25 @@ class FuzzyFileFinder
                    :score => path_match[:score] * match_result[:score] }
         yield result
       end
+    end
+
+    def determine_shared_prefix
+      # the common case: if there is only a single root, then the entire
+      # name of the root is the shared prefix.
+      return roots.first.name if roots.length == 1
+
+      split_roots = roots.map { |root| root.name.split(%r{/}) }
+      segments = split_roots.map { |root| root.length }.max
+      master = split_roots.pop
+
+      segments.times do |segment|
+        if !split_roots.all? { |root| root[segment] == master[segment] }
+          return master[0,segment].join("/")
+        end
+      end
+
+      # shouldn't ever get here, since we uniq the root list before
+      # calling this method, but if we do, somehow...
+      return roots.first.name
     end
 end
