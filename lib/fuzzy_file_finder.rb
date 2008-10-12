@@ -37,7 +37,7 @@ class FuzzyFileFinder
   module Version
     MAJOR = 1
     MINOR = 0
-    TINY  = 2
+    TINY  = 3
     STRING = [MAJOR, MINOR, TINY].join(".")
   end
 
@@ -284,7 +284,9 @@ class FuzzyFileFinder
     def match_path(path, path_matches, path_regex, path_segments)
       return path_matches[path] if path_matches.key?(path)
 
-      matchable_name = path.name.sub(@shared_prefix_re, "")
+      name_with_slash = path.name + "/" # add a trailing slash for matching the prefix
+      matchable_name = name_with_slash.sub(@shared_prefix_re, "")
+      matchable_name.chop! # kill the trailing slash
 
       if path_regex
         match = matchable_name.match(path_regex)
@@ -302,8 +304,9 @@ class FuzzyFileFinder
     def match_file(file, file_regex, path_match, &block)
       if file_match = file.name.match(file_regex)
         match_result = build_match_result(file_match, 1)
-        full_match_result = File.join(path_match[:result], match_result[:result])
-        abbr = File.join(path_match[:result].gsub(/[^\/]+/) { |m| m.index("(") ? m : m[0,1] }, match_result[:result])
+        full_match_result = path_match[:result].empty? ? match_result[:result] : File.join(path_match[:result], match_result[:result])
+        shortened_path = path_match[:result].gsub(/[^\/]+/) { |m| m.index("(") ? m : m[0,1] }
+        abbr = shortened_path.empty? ? match_result[:result] : File.join(shortened_path, match_result[:result])
 
         result = { :path => file.path,
                    :abbr => abbr,
