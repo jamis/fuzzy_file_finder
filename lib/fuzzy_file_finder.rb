@@ -102,11 +102,14 @@ class FuzzyFileFinder
   # The prefix shared by all +roots+.
   attr_reader :shared_prefix
 
+  # The list of glob patterns to ignore.
+  attr_reader :ignores
+
   # Initializes a new FuzzyFileFinder. This will scan the
   # given +directories+, using +ceiling+ as the maximum number
   # of entries to scan. If there are more than +ceiling+ entries
   # a TooManyEntries exception will be raised.
-  def initialize(directories=['.'], ceiling=10_000)
+  def initialize(directories=['.'], ceiling=10_000, ignores=nil)
     directories = Array(directories)
     directories << "." if directories.empty?
 
@@ -119,6 +122,8 @@ class FuzzyFileFinder
 
     @files = []
     @ceiling = ceiling
+
+    @ignores = Array(ignores)
 
     rescan!
   end
@@ -218,10 +223,16 @@ class FuzzyFileFinder
 
         if File.directory?(full)
           follow_tree(Directory.new(full))
-        else
+        elsif !ignore?(full.sub(@shared_prefix_re, ""))
           files.push(FileSystemEntry.new(directory, entry))
         end
       end
+    end
+
+    # Returns +true+ if the given name matches any of the ignore
+    # patterns.
+    def ignore?(name)
+      ignores.any? { |pattern| File.fnmatch(pattern, name) }
     end
 
     # Takes the given pattern string "foo" and converts it to a new
