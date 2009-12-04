@@ -217,6 +217,7 @@ class FuzzyFileFinder
     def follow_tree(directory)
       Dir.entries(directory.name).each do |entry|
         next if entry[0,1] == "."
+        next if ignore?(directory.name) # Ignore whole directory hierarchies
         raise TooManyEntries if files.length > ceiling
 
         full = File.join(directory.name, entry)
