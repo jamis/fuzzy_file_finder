@@ -27,10 +27,6 @@ In a nutshell:
 
 See FuzzyFileFinder for more documentation, and links to further information.
 
-== INSTALL:
-
-* gem install --source=http://gems.github.com jamis-fuzzy_file_finder
-
 == LICENSE:
 
 All code, documentation, and related materials in this project are released into the PUBLIC DOMAIN. Usage, modification, and distribution are allowed without restriction.
